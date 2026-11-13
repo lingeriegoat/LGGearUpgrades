@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: LG Gear Upgrades
+## Notes: Alerts you to better gear in your bags and finds upgrades on the auction house, using the stats you choose.
+## Author: LG
+## Version: 1.2.4
+## IconTexture: Interface\AddOns\LGGearUpgrades\Media\Icon
+## SavedVariables: LGGearUpgradesDB
+## SavedVariablesPerCharacter: LGGearUpgradesCharDB
+
+Core.lua
+Items.lua
+Tooltip.lua
+Bags.lua
+Auction.lua
+Quests.lua
+Minimap.lua
+Options.lua
