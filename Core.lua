@@ -13,6 +13,7 @@ local DEFAULTS = {
 	useAuctionator = true,
 	useOtherScans = true,
 	playSound = true,
+	chatAlert = true,
 }
 
 local GLOBAL_DEFAULTS = { minimapHide = false, minimapAngle = 215 }
@@ -53,21 +54,6 @@ function LG:SettingsChanged()
 		LG.Bags:Refresh(true)
 		LG.Auction:MarkStale()
 	end)
-end
-
-SLASH_LGGEARUPGRADES1 = "/lgg"
-SLASH_LGGEARUPGRADES2 = "/lggearupgrades"
-SlashCmdList.LGGEARUPGRADES = function(msg)
-	msg = (msg or ""):lower():match("^%s*(.-)%s*$")
-	if msg == "scan" then
-		LG.Auction:Scan()
-	elseif msg == "sound" then
-		PlaySoundFile(UPGRADE_SOUND, "Master")
-	elseif msg == "" or msg == "options" or msg == "config" then
-		LG.Options:Open()
-	else
-		LG:Print("/lgg - open settings; /lgg scan - scan the auction house (while it is open); /lgg sound - test the upgrade sound")
-	end
 end
 
 local f = CreateFrame("Frame")

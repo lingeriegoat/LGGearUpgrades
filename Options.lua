@@ -63,7 +63,7 @@ function Options:Create()
 	scroll:SetPoint("TOPLEFT", 0, -4)
 	scroll:SetPoint("BOTTOMRIGHT", -28, 4)
 	local p = CreateFrame("Frame", nil, scroll)
-	p:SetSize(560, 640)
+	p:SetSize(560, 680)
 	scroll:SetScrollChild(p)
 	scroll:SetScript("OnSizeChanged", function(_, w) if w and w > 0 then p:SetWidth(w) end end)
 	Label(p, "LG Gear Upgrades", 16, -16, "GameFontNormalLarge")
@@ -115,11 +115,13 @@ function Options:Create()
 	Label(p, "levels above my level", 278, -478, "GameFontHighlight")
 
 	Section(p, "Alerts", -512)
-	Check(p, "Play a sound when a new bag item is 100% or more better", 20, -536,
-		function() return db.playSound end, function(v) db.playSound = v end)
+	Check(p, "Show a chat alert when a better item enters your bags", 20, -536,
+		function() return db.chatAlert end, function(v) db.chatAlert = v end, true)
+	Check(p, "Play a sound when a new bag item is 100% or more better", 20, -562,
+		function() return db.playSound end, function(v) db.playSound = v end, true)
 
-	Section(p, "Interface", -576)
-	local _, mmLabel = Check(p, "Show the minimap button", 20, -600,
+	Section(p, "Interface", -602)
+	local _, mmLabel = Check(p, "Show the minimap button", 20, -626,
 		function() return not LG.global.minimapHide end,
 		function(v) LG.global.minimapHide = not v LG.Minimap:Refresh() end, true)
 	local note = p:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")

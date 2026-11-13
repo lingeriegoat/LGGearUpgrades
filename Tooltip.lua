@@ -23,11 +23,11 @@ local function AddLine(tooltip, link)
 	local verdict = ok and LG.Items.Verdict(r)
 	if verdict == "better" then
 		local c = BETTER[r.pct and Tier(r.pct) or 5]
-		local text = r.pct and ("%.0f%% Better"):format(math.min(r.pct, 200)) or "Better (empty slot)"
+		local text = r.pct and ("%.0f%% Better"):format(r.pct) or "Better (empty slot)"
 		tooltip:AddLine(PREFIX .. Colored(c, text))
 	elseif verdict == "worse" then
 		local mag = -r.pct
-		tooltip:AddLine(PREFIX .. Colored(WORSE[Tier(mag)], ("%.0f%% Worse"):format(math.min(mag, 200))))
+		tooltip:AddLine(PREFIX .. Colored(WORSE[Tier(mag)], ("%.0f%% Worse"):format(mag)))
 	end
 end
 

@@ -13,7 +13,7 @@ local LOAD_TIMEOUT = 10
 local OTHER_SCAN_SETTLE = 3
 local BATCH = 500
 local MAX_ROWS = 500
-local ROW_H, VISIBLE, TOP, STALE_H = 38, 12, 60, 15
+local ROW_H, VISIBLE, TOP, STALE_H = 38, 12, 74, 15
 local CARET = "Interface\\AddOns\\LGGearUpgrades\\Media\\CaretDown"
 
 A.state = "idle" -- idle | waiting | reading
@@ -35,8 +35,8 @@ local function Coins(c)
 	local g, s, cp = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
 	local parts = {}
 	if g > 0 then parts[#parts + 1] = (BreakUpLargeNumbers and BreakUpLargeNumbers(g) or g) .. GOLD end
-	if s > 0 or (g > 0 and cp > 0) then parts[#parts + 1] = s .. SILVER end
-	if cp > 0 or #parts == 0 then parts[#parts + 1] = cp .. COPPER end
+	if g > 0 or s > 0 then parts[#parts + 1] = s .. SILVER end
+	parts[#parts + 1] = cp .. COPPER
 	return table.concat(parts, " ")
 end
 
@@ -44,6 +44,11 @@ local function AgeText(sec)
 	if sec < 3600 then return ("%d min"):format(math.max(1, math.floor(sec / 60))) end
 	if sec < 86400 then return ("%dh %dm"):format(math.floor(sec / 3600), math.floor(sec % 3600 / 60)) end
 	return ("%d days"):format(math.floor(sec / 86400))
+end
+
+local function Minutes(sec)
+	local m = math.max(1, math.floor(sec / 60))
+	return m == 1 and "1 minute" or (m .. " minutes")
 end
 
 -- one entry per item (and random suffix), whichever listing is cheapest
@@ -79,8 +84,11 @@ local function Layout(hasStale)
 	top = t
 	ui.frame:SetHeight(top + VISIBLE * ROW_H + 14)
 	ui.status:ClearAllPoints()
-	ui.status:SetPoint("TOPLEFT", 14, 17 - top)
+	ui.status:SetPoint("TOPLEFT", 14, 31 - top)
 	ui.status:SetPoint("RIGHT", -14, 0)
+	ui.info:ClearAllPoints()
+	ui.info:SetPoint("TOPLEFT", 14, 17 - top)
+	ui.info:SetPoint("RIGHT", -14, 0)
 	for i, row in ipairs(ui.rows) do
 		row:ClearAllPoints()
 		row:SetPoint("TOPLEFT", 12, -top - (i - 1) * ROW_H)
@@ -102,6 +110,18 @@ function A:RefreshStale()
 	end
 	ui.stale:SetText(text)
 	Layout(text ~= "")
+
+	if not A.savedAt then
+		ui.info:SetText("No scan yet - ready to scan.")
+	else
+		local age = time() - A.savedAt
+		if age > COOLDOWN then
+			ui.info:SetText(#A.results > 0 and "" or ("Last scan: %s ago - |cff40ff40ready to scan.|r"):format(Minutes(age)))
+		else
+			ui.info:SetText(("Last scan: %s ago - next scan available in %s."):format(
+				age < 60 and "under a minute" or Minutes(age), Minutes(math.ceil((COOLDOWN - age) / 60) * 60)))
+		end
+	end
 end
 
 local function BuildDisplay()
@@ -112,6 +132,18 @@ local function BuildDisplay()
 		local group = list[i].group
 		local j = i
 		while j <= #list and list[j].group == group do j = j + 1 end
+		local best
+		for k = i, j - 1 do
+			local e = list[k]
+			e.best = nil
+			if e.gain and (not best or e.gain > best.gain) then best = e end
+		end
+		if best then
+			for k = i, j - 1 do
+				local e = list[k]
+				if e.gain and (best.gain - e.gain < 0.001 or e.pctText == best.pctText) then e.best = true end
+			end
+		end
 		local key = group or "Other"
 		local closed = A.collapsed[key]
 		A.display[#A.display + 1] = { header = ("%s (%d)"):format(key, j - i), key = key, closed = closed }
@@ -130,6 +162,7 @@ local function UpdateRows()
 		if d and d.header then
 			row.link = nil
 			row.key = d.key
+			row.glow:Hide()
 			row.bg:Show()
 			row.caret:Show()
 			row.caret:SetTexCoord(0, 1, d.closed and 1 or 0, d.closed and 0 or 1)
@@ -144,6 +177,7 @@ local function UpdateRows()
 		elseif d then
 			row.link = d.link
 			row.key = nil
+			row.glow:SetShown(d.best == true)
 			row.bg:Hide()
 			row.caret:Hide()
 			row.icon:Show()
@@ -159,6 +193,7 @@ local function UpdateRows()
 		else
 			row.link = nil
 			row.key = nil
+			row.glow:Hide()
 			row:Hide()
 		end
 	end
@@ -167,10 +202,52 @@ local function UpdateRows()
 	ui.slider:SetShown(maxOffset > 0)
 end
 
+local GLOW = { 0.25, 0.65, 1 }
+
+local function MakeGlow(row)
+	local g = CreateFrame("Frame", nil, row)
+	g:SetAllPoints()
+	local tint = g:CreateTexture(nil, "BACKGROUND")
+	tint:SetAllPoints()
+	tint:SetColorTexture(GLOW[1], GLOW[2], GLOW[3], 0.12)
+	-- ring expanded e px beyond the row, t px thick, drawn inward from that edge
+	local function ring(e, t, alpha)
+		local function edge(p1, x1, y1, p2, x2, y2, w, h)
+			local tex = g:CreateTexture(nil, "OVERLAY")
+			tex:SetColorTexture(GLOW[1], GLOW[2], GLOW[3], alpha)
+			tex:SetPoint(p1, g, p1, x1, y1)
+			tex:SetPoint(p2, g, p2, x2, y2)
+			if w then tex:SetWidth(w) end
+			if h then tex:SetHeight(h) end
+		end
+		edge("TOPLEFT", -e, e, "TOPRIGHT", e, e, nil, t)
+		edge("BOTTOMLEFT", -e, -e, "BOTTOMRIGHT", e, -e, nil, t)
+		edge("TOPLEFT", -e, e, "BOTTOMLEFT", -e, -e, t, nil)
+		edge("TOPRIGHT", e, e, "BOTTOMRIGHT", e, -e, t, nil)
+	end
+	ring(0, 2, 1)
+	ring(3, 3, 0.3)
+	local anim = g:CreateAnimationGroup()
+	local pulse = anim:CreateAnimation("Alpha")
+	if pulse.SetFromAlpha then
+		pulse:SetFromAlpha(1)
+		pulse:SetToAlpha(0.55)
+	else
+		pulse:SetChange(-0.45)
+	end
+	pulse:SetDuration(0.9)
+	anim:SetLooping("BOUNCE")
+	g:SetScript("OnShow", function() anim:Play() end)
+	g:SetScript("OnHide", function() anim:Stop() end)
+	g:Hide()
+	return g
+end
+
 local function MakeRow(parent, i)
 	local b = CreateFrame("Button", nil, parent)
 	b:SetSize(376, ROW_H - 2)
 	b:SetPoint("TOPLEFT", 12, -top - (i - 1) * ROW_H)
+	b.glow = MakeGlow(b)
 	b.bg = b:CreateTexture(nil, "BACKGROUND")
 	b.bg:SetAllPoints()
 	b.bg:SetColorTexture(1, 1, 1, 0.1)
@@ -239,10 +316,15 @@ function A:CreateWindow()
 	ui.stale:SetJustifyH("LEFT")
 	ui.stale:SetTextColor(1, 0.2, 0.2)
 	ui.status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	ui.status:SetPoint("TOPLEFT", 14, 17 - top)
+	ui.status:SetPoint("TOPLEFT", 14, 31 - top)
 	ui.status:SetPoint("RIGHT", -14, 0)
 	ui.status:SetJustifyH("LEFT")
 	ui.status:SetWordWrap(false)
+	ui.info = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	ui.info:SetPoint("TOPLEFT", 14, 17 - top)
+	ui.info:SetPoint("RIGHT", -14, 0)
+	ui.info:SetJustifyH("LEFT")
+	ui.info:SetWordWrap(false)
 
 	ui.rows = {}
 	for i = 1, VISIBLE do ui.rows[i] = MakeRow(f, i) end
@@ -334,7 +416,7 @@ function A:Read(message)
 		for _, d in pairs(found) do
 			local r = d.r
 			list[#list + 1] = {
-				link = d.link, price = d.price, group = r.group, slot = r.slot,
+				link = d.link, price = d.price, group = r.group, slot = r.slot, gain = r.gain,
 				pctText = Items.FormatPct(r), info = Items.FormatGains(r.deltas),
 			}
 		end
@@ -424,8 +506,8 @@ function A:Wait(message)
 	token = token + 1
 	local t = token
 	self.state = "waiting"
-	LG.db.lastScan = time()
 	self:SetStatus(message)
+	self:RefreshStale()
 	C_Timer.After(RESPONSE_TIMEOUT, function()
 		if t == token and A.state == "waiting" then
 			A.state = "idle"
@@ -508,6 +590,7 @@ f:SetScript("OnEvent", function(_, event)
 		if ui.frame then ui.frame:Hide() end
 	else
 		A.replicateAt = time()
+		LG.db.lastScan = A.replicateAt
 		if A.state == "waiting" then
 			A:Read("Reading auctions...")
 		elseif A.state == "idle" and A.open and LG.db.useOtherScans and time() - lastRead > 20 then

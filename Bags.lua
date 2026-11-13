@@ -116,6 +116,7 @@ function Bags:Refresh(clearRetries)
 end
 
 local function Announce(link, r)
+	if not LG.db.chatAlert then return end
 	local vs = r.equipped or "an empty slot"
 	LG:Print(("Better item: %s  (%s) vs %s [%s]"):format(link, LG.Items.FormatPct(r) .. ": " .. LG.Items.FormatGains(r.deltas), vs, LG.Items.SLOT_NAMES[r.slot]))
 end

@@ -2,7 +2,7 @@
 ## Title: LG Gear Upgrades
 ## Notes: Alerts you to better gear in your bags and finds upgrades on the auction house, using the stats you choose.
 ## Author: LG
-## Version: 1.2.4
+## Version: 1.5.3
 ## IconTexture: Interface\AddOns\LGGearUpgrades\Media\Icon
 ## SavedVariables: LGGearUpgradesDB
 ## SavedVariablesPerCharacter: LGGearUpgradesCharDB
