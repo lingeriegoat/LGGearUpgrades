@@ -32,17 +32,15 @@ local function Mark(button, kind)
 end
 
 local function RewardButtons()
-	local list = {}
+	local list, seen = {}, {}
+	local function add(b)
+		if b and not seen[b] then seen[b] = true list[#list + 1] = b end
+	end
 	local frame = _G.QuestInfoRewardsFrame
 	if frame and frame.RewardButtons then
-		for _, b in ipairs(frame.RewardButtons) do list[#list + 1] = b end
-	else
-		for i = 1, 30 do
-			local b = _G["QuestInfoRewardsFrameQuestInfoItem" .. i]
-			if not b then break end
-			list[#list + 1] = b
-		end
+		for _, b in ipairs(frame.RewardButtons) do add(b) end
 	end
+	for i = 1, 30 do add(_G["QuestInfoRewardsFrameQuestInfoItem" .. i]) end
 	return list
 end
 
@@ -72,15 +70,20 @@ function Quests:Update()
 		end
 	end
 	if #choices > 1 then
-		local anyUpgrade, best, bestPrice = false, nil, -1
+		local anyUpgrade, unknown, best, bestPrice = false, false, nil, 0
 		for _, c in ipairs(choices) do
 			anyUpgrade = anyUpgrade or c.upgrade
-			local sell = select(11, GetInfo(c.link)) or 0
-			if sell > bestPrice then best, bestPrice = c.button, sell end
+			local sell = select(11, GetInfo(c.link))
+			if sell == nil then
+				unknown = true
+			elseif sell > bestPrice then
+				best, bestPrice = c.button, sell
+			end
 		end
-		if not anyUpgrade and best then Mark(best, "coin") end
+		if unknown then pending = true end
+		if not anyUpgrade and not unknown and best then Mark(best, "coin") end
 	end
-	if pending and retries < 3 then
+	if pending and retries < 6 then
 		retries = retries + 1
 		C_Timer.After(0.5, function() Quests:Update() end)
 	elseif not pending then
@@ -88,13 +91,40 @@ function Quests:Update()
 	end
 end
 
+-- Blizzard's quest templates keep their own reference to QuestInfo_ShowRewards, so hook the
+-- entry points that are called by name and the frame's own show/events as well.
+local function Schedule()
+	retries = 0
+	C_Timer.After(0, function() pcall(Quests.Update, Quests) end)
+end
+
 local function Hook()
-	if Quests.hooked or not _G.QuestInfo_ShowRewards then return end
-	Quests.hooked = true
-	hooksecurefunc("QuestInfo_ShowRewards", function() retries = 0 pcall(Quests.Update, Quests) end)
+	if not Quests.hooked and _G.QuestInfo_Display then
+		Quests.hooked = true
+		hooksecurefunc("QuestInfo_Display", Schedule)
+		if _G.QuestInfo_ShowRewards then hooksecurefunc("QuestInfo_ShowRewards", Schedule) end
+	end
+	local frame = _G.QuestInfoRewardsFrame
+	if frame and not Quests.frameHooked then
+		Quests.frameHooked = true
+		frame:HookScript("OnShow", Schedule)
+	end
 end
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
 f:RegisterEvent("PLAYER_ENTERING_WORLD")
-f:SetScript("OnEvent", Hook)
+f:RegisterEvent("QUEST_DETAIL")
+f:RegisterEvent("QUEST_COMPLETE")
+f:RegisterEvent("QUEST_ITEM_UPDATE")
+f:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+f:SetScript("OnEvent", function(_, event)
+	if event == "ADDON_LOADED" or event == "PLAYER_ENTERING_WORLD" then
+		Hook()
+	elseif event == "GET_ITEM_INFO_RECEIVED" then
+		if _G.QuestInfoRewardsFrame and _G.QuestInfoRewardsFrame:IsVisible() then Schedule() end
+	else
+		Hook()
+		Schedule()
+	end
+end)

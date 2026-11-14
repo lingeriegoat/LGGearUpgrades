@@ -163,6 +163,7 @@ local function SelectedStats()
 end
 
 local WEIGHT = { ARMOR = 0.01 }
+local TICK_ONLY = { DPS = true, HEALING = true, SPELLPOWER = true }
 local OFF_STAT = 0.5
 
 local function Compare(new, old, selected)
@@ -171,10 +172,12 @@ local function Compare(new, old, selected)
 	local deltas, sumNew, sumOld = {}, 0, 0
 	for _, s in ipairs(Items.STATS) do
 		local key = s.key
-		if on[key] or key ~= "DPS" then
+		if on[key] or not TICK_ONLY[key] then
 			local n, o = new[key] or 0, old[key] or 0
-			local w = (WEIGHT[key] or 1) * (on[key] and 1 or OFF_STAT)
-			sumNew, sumOld = sumNew + n * w, sumOld + o * w
+			local w = WEIGHT[key] or 1
+			-- unticked stats only count (at a discount) on the gear you already own
+			sumNew = sumNew + (on[key] and n * w or 0)
+			sumOld = sumOld + o * w * (on[key] and 1 or OFF_STAT)
 			if math.abs(n - o) > 0.001 then deltas[#deltas + 1] = { key = key, delta = n - o } end
 		end
 	end
@@ -224,8 +227,39 @@ local function IsUniqueOwned(itemID, slots)
 	return false
 end
 
+local DUAL_WIELD_CLASSES = { WARRIOR = true, ROGUE = true, HUNTER = true, SHAMAN = true, DEATHKNIGHT = true, DEMONHUNTER = true, MONK = true }
+local function CanDualWield()
+	if IsPlayerSpell then return IsPlayerSpell(674) == true end
+	return DUAL_WIELD_CLASSES[select(2, UnitClass("player"))] == true
+end
+
+-- The tooltip shows requirements you fail in red (wrong armor/weapon type, class, ...); level lines are handled separately.
+local usableCache = {}
+function Items.Usable(link)
+	local c = usableCache[link]
+	if c ~= nil then return c end
+	local usable = true
+	if C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+		local ok, data = pcall(C_TooltipInfo.GetHyperlink, link)
+		if ok and data and data.lines then
+			for _, line in ipairs(data.lines) do
+				for _, side in ipairs({ "left", "right" }) do
+					local text, col = line[side .. "Text"], line[side .. "Color"]
+					if text and col and (col.r or 0) > 0.85 and (col.g or 1) < 0.25 and (col.b or 1) < 0.25
+						and not text:find("%d") then
+						usable = false
+					end
+				end
+			end
+		end
+	end
+	usableCache[link] = usable
+	return usable
+end
+
 local cache = {}
-function Items.ClearCache() wipe(cache) end
+function Items.ClearCache()
+	wipe(usableCache) wipe(cache) end
 
 -- Best comparison against your equipped gear (gain may be negative), nil, or nil + "pending".
 function Items.Rate(link)
@@ -256,11 +290,29 @@ function Items.Rate(link)
 	end
 
 	local result
+	local mh = GetInventoryItemLink("player", 16)
+	local mhLoc = mh and select(4, GetInstant(mh))
 	for _, slot in ipairs(slots) do
-		local eq = GetInventoryItemLink("player", slot)
-		local eqLoc = eq and select(4, GetInstant(eq))
-		-- the off-hand slot only counts for a one-hander when a weapon is in it
-		if slot ~= 17 or equipLoc ~= "INVTYPE_WEAPON" or (eqLoc and WEAPON_LOCS[eqLoc]) then
+		local own = GetInventoryItemLink("player", slot)
+		local eq = own
+		if slot == 17 and not own and equipLoc ~= "INVTYPE_WEAPON" and mhLoc == "INVTYPE_2HWEAPON" then
+			-- empty off-hand under a two-hander: compare against the two-hander it would replace
+			eq = mh
+		end
+		local skip = false
+		if slot == 17 then
+			local ownLoc = own and select(4, GetInstant(own))
+			if equipLoc == "INVTYPE_WEAPON" then
+				if own then
+					skip = not WEAPON_LOCS[ownLoc]
+				else
+					skip = mhLoc == "INVTYPE_2HWEAPON" or not CanDualWield()
+				end
+			elseif equipLoc == "INVTYPE_WEAPONOFFHAND" then
+				skip = not (own and WEAPON_LOCS[ownLoc]) and not CanDualWield()
+			end
+		end
+		if not skip then
 			local old = eq and ReadStats(eq)
 			if eq and not old then return nil, "pending" end
 			local deltas, sumNew, sumOld = Compare(new, old or {}, selected)
@@ -280,7 +332,7 @@ end
 -- Upgrade table, nil (not an upgrade), or nil + "pending" (item data not loaded yet).
 function Items.Evaluate(link)
 	local r, pending = Items.Rate(link)
-	if Items.Verdict(r) == "better" then return r end
+	if Items.Verdict(r) == "better" and Items.Usable(link) then return r end
 	return nil, pending
 end
 

@@ -20,7 +20,7 @@ end
 local function AddLine(tooltip, link)
 	if not (link and LG.db) then return end
 	local ok, r = pcall(LG.Items.Rate, link)
-	local verdict = ok and LG.Items.Verdict(r)
+	local verdict = ok and LG.Items.Usable(link) and LG.Items.Verdict(r)
 	if verdict == "better" then
 		local c = BETTER[r.pct and Tier(r.pct) or 5]
 		local text = r.pct and ("%.0f%% Better"):format(r.pct) or "Better (empty slot)"
